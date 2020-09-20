@@ -1,0 +1,31 @@
+{
+  "name": "kyc-test",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "start": "node ./bin/www",
+    "dev": "nodemon ./bin/www"
+  },
+  "dependencies": {
+    "@credify/credify-js": "^1.2.2",
+    "aes-js": "^3.1.2",
+    "bip39": "^3.0.2",
+    "cookie-parser": "^1.4.5",
+    "debug": "~2.6.9",
+    "eosjs-ecc": "^4.0.7",
+    "express": "~4.16.1",
+    "hbs": "^4.1.1",
+    "hdkey": "^1.1.2",
+    "http-auth": "^4.1.2",
+    "http-errors": "^1.8.0",
+    "js-sha256": "^0.9.0",
+    "morgan": "~1.9.1",
+    "pg": "^7.18.2",
+    "request": "^2.88.2",
+    "uuid": "^3.4.0",
+    "wif": "^2.0.6"
+  },
+  "devDependencies": {
+    "dotenv": "^8.2.0"
+  }
+}

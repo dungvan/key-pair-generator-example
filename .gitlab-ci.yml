@@ -1,0 +1,95 @@
+include:
+  - template: Code-Quality.gitlab-ci.yml
+
+image: docker:stable
+
+services:
+  - name: docker:18-dind
+
+variables:
+  K8S_PROJECT_ID: 18326839
+  GIT_SUBMODULE_STRATEGY: recursive
+  API_DIR: "/builds/credify.one/services/entity"
+  CONTAINER_REGISTRY: 889452633010.dkr.ecr.ap-southeast-1.amazonaws.com
+  CONTAINER_NAME: onfido-mock
+  CONTAINER_IMAGE: ${CONTAINER_REGISTRY}/${CONTAINER_NAME}
+  SERVICE_NAME: onfido-mock
+
+before_script:
+  - apk add --no-cache curl jq python3 py3-pip
+  - pip3 install awscli
+  - export DOCKER_HOST=tcp://localhost:2375
+
+stages:
+  - test
+  - build
+  - deploy
+
+code_quality:
+  stage: test
+  variables:
+    CODE_FOLDER: "/credify"
+    DOCKER_DRIVER: overlay2
+    SP_VERSION: 0.85.9
+  allow_failure: true
+  script:
+    - docker run
+        --env SOURCE_CODE="$PWD"
+        --volume "$PWD":"${CODE_FOLDER}"
+        --volume /var/run/docker.sock:/var/run/docker.sock
+        "registry.gitlab.com/gitlab-org/ci-cd/codequality:$SP_VERSION" "${CODE_FOLDER}"
+  artifacts:
+    paths: [gl-code-quality-report.json]
+
+build_db_migrator:
+  stage: build
+  script:
+    - $(aws ecr get-login --no-include-email --region ap-southeast-1)
+    - cd db/
+    - docker build -t flywaydb -f flywaydb.Dockerfile .
+    - docker tag flywaydb 889452633010.dkr.ecr.ap-southeast-1.amazonaws.com/flywaydb:${CI_COMMIT_SHORT_SHA}
+    - docker push 889452633010.dkr.ecr.ap-southeast-1.amazonaws.com/flywaydb
+  only:
+    - integration
+    - master
+    - tags
+
+build:
+  stage: build
+  script:
+    - $(aws ecr get-login --no-include-email --region ap-southeast-1)
+    - docker build -t ${CONTAINER_NAME} .
+    - docker tag ${CONTAINER_NAME} ${CONTAINER_IMAGE}:${CI_COMMIT_SHORT_SHA}
+    - docker push ${CONTAINER_IMAGE}
+  only:
+    - integration
+    - master
+    - tags
+
+deploy_dev:
+  stage: deploy
+  variables:
+    DOWNSTREAM_BRANCH: integration
+  script:
+    - curl --request POST --form "token=${CI_JOB_TOKEN}" --form ref=${DOWNSTREAM_BRANCH} --form "variables[SERVICE_NAME]=${SERVICE_NAME}" --form "variables[IMAGE_TAG]=${CI_COMMIT_SHORT_SHA}" https://gitlab.com/api/v4/projects/${K8S_PROJECT_ID}/trigger/pipeline
+  only:
+    - integration
+
+deploy_stage:
+  stage: deploy
+  variables:
+    DOWNSTREAM_BRANCH: master
+  script:
+    - curl --request POST --form "token=${CI_JOB_TOKEN}" --form ref=${DOWNSTREAM_BRANCH} --form "variables[SERVICE_NAME]=${SERVICE_NAME}" --form "variables[IMAGE_TAG]=${CI_COMMIT_SHORT_SHA}" https://gitlab.com/api/v4/projects/${K8S_PROJECT_ID}/trigger/pipeline
+  only:
+    - master
+
+deploy_prod:
+  stage: deploy
+  variables:
+    DOWNSTREAM_BRANCH: prod
+  script:
+    - curl --request POST --form "token=${CI_JOB_TOKEN}" --form ref=${DOWNSTREAM_BRANCH} --form "variables[SERVICE_NAME]=${SERVICE_NAME}" --form "variables[IMAGE_TAG]=${CI_COMMIT_SHORT_SHA}" https://gitlab.com/api/v4/projects/${K8S_PROJECT_ID}/trigger/pipeline
+  only:
+    - tags
+  when: manual
